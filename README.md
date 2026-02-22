@@ -1,5 +1,7 @@
 # api-test-data-generator
 
+[![CI](https://github.com/Libin-Samkutty/api-test-data-generator/actions/workflows/ci.yml/badge.svg)](https://github.com/Libin-Samkutty/api-test-data-generator/actions/workflows/ci.yml)
+
 A tool that automatically creates realistic fake data for testing your APIs — no more writing test data by hand.
 
 You describe what your data should look like (using a simple schema file), and this tool generates as macny records as you need, ready to use in your tests.

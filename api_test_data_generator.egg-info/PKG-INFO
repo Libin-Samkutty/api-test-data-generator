@@ -1,0 +1,214 @@
+Metadata-Version: 2.4
+Name: api-test-data-generator
+Version: 0.1.0
+Summary: Generate structured, customizable test data for API testing.
+Author: Nivi Team
+License: MIT
+Keywords: testing,api,data-generation,faker
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Software Development :: Testing
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: faker>=24.0.0
+Requires-Dist: pydantic>=2.6.0
+Requires-Dist: jsonschema>=4.21.0
+Requires-Dist: typer>=0.12.0
+Requires-Dist: pyyaml>=6.0.1
+Provides-Extra: csv
+Requires-Dist: pandas>=2.2.0; extra == "csv"
+Provides-Extra: cli
+Requires-Dist: rich>=13.7.0; extra == "cli"
+Provides-Extra: all
+Requires-Dist: pandas>=2.2.0; extra == "all"
+Requires-Dist: rich>=13.7.0; extra == "all"
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=5.0.0; extra == "dev"
+Requires-Dist: flake8>=7.0.0; extra == "dev"
+Requires-Dist: mypy>=1.9.0; extra == "dev"
+
+# api-test-data-generator
+
+Generate structured, customizable test data for API functional, integration, and load testing.
+
+---
+
+## Features
+
+- 🔢 **Schema-driven** — JSON Schema & YAML schema support
+- 🎲 **Deterministic** — seed-based reproducibility
+- 📦 **Bulk generation** — 10 000 records in < 2 seconds
+- 🔌 **CLI + importable package** — use from terminal or pytest
+- 📤 **JSON & CSV export**
+- ✅ **Built-in validation** — validates output against the schema before writing
+- 🧩 **Extensible** — strategy-pattern field generators, easy to add custom types
+
+---
+
+## Installation
+
+```bash
+pip install api-test-data-generator
+
+# With optional extras
+pip install "api-test-data-generator[all]"   # pandas + rich
+```
+
+---
+
+## Quick Start
+
+### CLI
+
+```bash
+api-gen generate \
+  --schema user_schema.json \
+  --count 1000 \
+  --output users.json \
+  --seed 42
+```
+
+### Python API
+
+```python
+from api_test_data_generator.generator import DataGenerator
+
+gen = DataGenerator.from_file("user_schema.json", seed=42)
+
+# Single record
+record = gen.generate_record()
+
+# Bulk
+records = gen.generate_bulk(1000)
+```
+
+---
+
+## Schema Examples
+
+### JSON Schema
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "user_id":   { "type": "string", "format": "uuid" },
+    "name":      { "type": "string", "faker": "name" },
+    "email":     { "type": "string", "format": "email" },
+    "age":       { "type": "integer", "minimum": 18, "maximum": 60 },
+    "is_active": { "type": "boolean" },
+    "role":      { "enum": ["admin", "user", "guest"] },
+    "tags":      {
+      "type": "array",
+      "items": { "type": "string", "faker": "word" },
+      "minItems": 1,
+      "maxItems": 5
+    }
+  },
+  "required": ["user_id", "email"]
+}
+```
+
+### YAML Schema
+
+```yaml
+type: object
+properties:
+  id:
+    type: string
+    format: uuid
+  score:
+    type: number
+    minimum: 0.0
+    maximum: 100.0
+required:
+  - id
+```
+
+---
+
+## Supported Field Types
+
+| Schema type / format | Generator |
+|---|---|
+| `"type": "string"` | Random alphanumeric string |
+| `"type": "integer"` | Random int (min/max respected) |
+| `"type": "number"` | Random float (min/max/precision respected) |
+| `"type": "boolean"` | Random true/false |
+| `"type": "array"` | List of generated items |
+| `"type": "object"` | Recursively generated nested object |
+| `"format": "uuid"` | UUID v4 |
+| `"format": "email"` | Valid email address |
+| `"format": "date"` | ISO 8601 date string |
+| `"format": "date-time"` | ISO 8601 datetime string |
+| `"format": "phone"` | Phone number |
+| `"format": "address"` | Nested address dict |
+| `"enum": [...]` | Random value from enum list |
+| `"pattern": "..."` | String matching regex pattern |
+| `"faker": "method_name"` | Any [Faker](https://faker.readthedocs.io/) provider method |
+
+---
+
+## CLI Reference
+
+```
+api-gen generate [OPTIONS]
+
+Options:
+  --schema    PATH     Path to JSON/YAML schema file  [required]
+  --count     INT      Number of records to generate  [default: 1]
+  --output    PATH     Output file path               [required]
+  --format    TEXT     json or csv                    [default: json]
+  --seed      INT      Integer seed for reproducibility
+  --validate / --no-validate  Validate output against schema [default: validate]
+  --verbose / -v       Enable debug logging
+```
+
+---
+
+## Development
+
+```bash
+# Install dev dependencies
+cmd /c "pip install -e .[dev,all]"
+
+# Run tests with coverage
+pytest
+
+# Lint
+flake8 api_test_data_generator/
+
+# Build package
+python -m build
+```
+
+---
+
+## Architecture
+
+```
+api_test_data_generator/
+├── generator/
+│   ├── core.py          # DataGenerator engine
+│   ├── schema_loader.py # JSON/YAML schema loading
+│   ├── field_types.py   # Strategy-pattern field generators
+│   ├── validators.py    # JSON Schema validation
+│   └── exceptions.py    # Custom exceptions
+├── exporters/
+│   ├── json_exporter.py
+│   └── csv_exporter.py
+├── cli/
+│   └── main.py          # Typer CLI
+└── utils/
+    ├── seed_manager.py  # Global seed management
+    └── randomizer.py    # Faker + random utilities
+```
+
+---
+
+## License
+
+MIT

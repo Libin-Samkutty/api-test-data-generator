@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "properties": {
+    "user_id":    { "type": "string", "format": "uuid" },
+    "name":       { "type": "string", "faker": "name" },
+    "email":      { "type": "string", "format": "email" },
+    "phone":      { "type": "string", "format": "phone" },
+    "age":        { "type": "integer", "minimum": 18, "maximum": 60 },
+    "is_active":  { "type": "boolean" },
+    "role":       { "enum": ["admin", "user", "guest"] },
+    "score":      { "type": "number", "minimum": 0.0, "maximum": 100.0, "precision": 2 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "faker": "word" },
+      "minItems": 1,
+      "maxItems": 5
+    },
+    "address": {
+      "type": "object",
+      "format": "address"
+    }
+  },
+  "required": ["user_id", "email", "role"]
+}

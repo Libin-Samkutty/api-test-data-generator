@@ -1,2 +1,0 @@
-[console_scripts]
-api-gen = api_test_data_generator.cli.main:app

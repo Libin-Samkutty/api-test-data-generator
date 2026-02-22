@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "api-test-data-generator"
-version = "0.1.0"
+version = "0.1.1"
 description = "Generate structured, customizable test data for API testing."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "Nivi Team" }]
+authors = [{ name = " Libin Samkutty" }]
 keywords = ["testing", "api", "data-generation", "faker"]
 classifiers = [
     "Programming Language :: Python :: 3.11",

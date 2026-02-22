@@ -5,7 +5,6 @@ import random
 import logging
 from abc import ABC, abstractmethod
 from typing import Any
-from datetime import date, datetime, timedelta
 
 from api_test_data_generator.utils.randomizer import get_faker, random_string, random_from_regex
 from api_test_data_generator.generator.exceptions import UnsupportedFieldTypeError

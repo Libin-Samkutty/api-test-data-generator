@@ -3,7 +3,6 @@ import random
 import re
 import string
 import logging
-from typing import Any
 
 from faker import Faker
 

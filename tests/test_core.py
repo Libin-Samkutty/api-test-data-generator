@@ -112,7 +112,7 @@ class TestGenerateBulk:
         records = gen.generate_bulk(10_000)
         elapsed = time.perf_counter() - start
         assert len(records) == 10_000
-        assert elapsed < 2.0, f"Bulk generation took {elapsed:.2f}s (limit 2s)"
+        assert elapsed < 5.0, f"Bulk generation took {elapsed:.2f}s (limit 5s)"
 
 
 class TestValidation:

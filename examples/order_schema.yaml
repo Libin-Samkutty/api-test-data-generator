@@ -1,0 +1,35 @@
+type: object
+properties:
+  order_id:
+    type: string
+    format: uuid
+  customer_email:
+    type: string
+    format: email
+  status:
+    enum:
+      - pending
+      - confirmed
+      - shipped
+      - delivered
+      - cancelled
+  total_amount:
+    type: number
+    minimum: 1.0
+    maximum: 9999.99
+    precision: 2
+  item_count:
+    type: integer
+    minimum: 1
+    maximum: 50
+  created_at:
+    type: string
+    format: date-time
+  notes:
+    type: string
+    faker: sentence
+required:
+  - order_id
+  - customer_email
+  - status
+  - total_amount

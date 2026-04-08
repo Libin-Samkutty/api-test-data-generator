@@ -53,8 +53,11 @@ def export_csv(
         except ImportError:
             pass
 
-        # stdlib fallback
-        fieldnames = list(flat_records[0].keys())
+        # stdlib fallback — union of all keys to handle optional fields correctly
+        seen: dict[str, None] = {}
+        for rec in flat_records:
+            seen.update(dict.fromkeys(rec.keys()))
+        fieldnames = list(seen)
         with path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()

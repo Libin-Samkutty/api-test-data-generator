@@ -4,25 +4,27 @@
 
 A tool that automatically creates realistic fake data for testing your APIs — no more writing test data by hand.
 
-You describe what your data should look like (using a simple schema file), and this tool generates as macny records as you need, ready to use in your tests.
+You describe what your data should look like (using a simple schema file), and this tool generates as many records as you need, ready to use in your tests.
 
 ---
 
 ## Table of Contents
 
 - [What does it do?](#what-does-it-do)
+- [Why not just use Faker directly?](#why-not-just-use-faker-directly)
 - [How it works — the big picture](#how-it-works--the-big-picture)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Step 1 — Create a schema file](#step-1--create-a-schema-file)
 - [Step 2 — Generate data from the terminal](#step-2--generate-data-from-the-terminal)
-- [Step 3 — Use it inside Python or pytest](#step-3--use-it-inside-python-or-pytest)
+- [Step 3 — Preview your schema output instantly](#step-3--preview-your-schema-output-instantly)
+- [Step 4 — Use it inside Python or pytest](#step-4--use-it-inside-python-or-pytest)
 - [All CLI options explained](#all-cli-options-explained)
+- [Output formats](#output-formats)
 - [Schema field types — full reference](#schema-field-types--full-reference)
 - [Real-world schema examples](#real-world-schema-examples)
 - [Common recipes](#common-recipes)
 - [Using with pytest](#using-with-pytest)
-- [Exporting to CSV](#exporting-to-csv)
 - [Reproducible data with seeds](#reproducible-data-with-seeds)
 - [Error messages and what they mean](#error-messages-and-what-they-mean)
 - [Development setup](#development-setup)
@@ -38,7 +40,64 @@ Imagine you are building a user registration API and want to test it with 1000 d
 
 1. Describe what a user looks like (name, email, age, etc.) in a schema file
 2. Run one command
-3. Get a ready-to-use JSON or CSV file with 1000 realistic users
+3. Get a ready-to-use JSON, NDJSON, or CSV file with 1000 realistic users
+
+---
+
+## Why not just use Faker directly?
+
+[Faker](https://faker.readthedocs.io) is a great library for generating individual fake values. But when testing an API, you need more than random values — you need structured records that match your API contract, can be exported to a file, and behave consistently across test runs. Doing that with raw Faker requires writing glue code every time.
+
+Here is what that looks like in practice:
+
+**With raw Faker** — you write this for every project:
+```python
+from faker import Faker
+import json, csv, random
+
+fake = Faker()
+random.seed(42)
+Faker.seed(42)  # easy to forget; causes non-reproducible tests if missed
+
+users = []
+for _ in range(1000):
+    include_age = random.random() < 0.8  # optional fields need manual handling
+    user = {
+        "user_id": str(fake.uuid4()),
+        "email": fake.email(),
+        "name": fake.name() if include_age else None,
+        "age": random.randint(18, 60) if include_age else None,
+    }
+    users.append(user)
+
+# Flatten nested objects for CSV yourself
+# Collect all fieldnames across all records yourself (or columns go missing)
+# Write the export boilerplate yourself
+with open("users.csv", "w", newline="") as f:
+    writer = csv.DictWriter(f, fieldnames=users[0].keys())  # bug: misses optional fields
+    writer.writeheader()
+    writer.writerows(users)
+```
+
+**With this tool** — define the schema once, run one command:
+```bash
+api-gen generate --schema user_schema.json --count 1000 --output users.csv --format csv --seed 42
+```
+
+The specific things this tool handles for you:
+
+| Problem | Raw Faker | This tool |
+|---|---|---|
+| Structured multi-field records | Write a loop for every project | Defined once in a schema file |
+| Optional fields | `if random.random() < 0.8` everywhere | Automatic — fields not in `required` appear 80% of the time |
+| Reproducible output | Must seed both `random` and `Faker` separately | `--seed` handles both correctly |
+| Schema validation | Write jsonschema calls yourself | Built in — validates every record by default |
+| CSV with nested objects | Flatten and collect all fieldnames manually | Automatic dot-notation flattening |
+| NDJSON export | Write the loop yourself | `--format ndjson` |
+| No-code usage | Must write Python | `api-gen generate` from the terminal |
+| Quick schema iteration | Generate, print, adjust, repeat in code | `api-gen preview --schema ...` |
+
+If you are already comfortable with Faker and only need one or two fields, use Faker directly. If you need full records that match an API contract, reproducible datasets, or file export, this tool saves the boilerplate.
 
 ---
 
@@ -46,7 +105,7 @@ Imagine you are building a user registration API and want to test it with 1000 d
 
 ```
 Your schema file          This tool              Output file
-(what data looks like) → (generates records) → (users.json / users.csv)
+(what data looks like) → (generates records) → (users.json / users.ndjson / users.csv)
 
 user_schema.json   →   api-gen generate   →   users.json
 ```
@@ -103,7 +162,7 @@ After installing, verify it worked:
 api-gen --help
 ```
 
-You should see a help message listing the available commands.
+You should see a help message listing the available commands (`generate` and `preview`).
 
 ---
 
@@ -184,7 +243,31 @@ This creates a `users.json` file with 100 user records. Open it and you will see
 
 ---
 
-## Step 3 — Use it inside Python or pytest
+## Step 3 — Preview your schema output instantly
+
+Before generating a large dataset, use `api-gen preview` to check that your schema produces the records you expect — without saving any files.
+
+```bash
+api-gen preview --schema user_schema.json
+```
+
+By default it shows 3 records. Use `--count` to see up to 10:
+
+```bash
+api-gen preview --schema user_schema.json --count 5
+```
+
+Use `--seed` to get the same preview output every time (useful when iterating on a schema):
+
+```bash
+api-gen preview --schema user_schema.json --count 3 --seed 42
+```
+
+If `rich` is installed (via `pip install "api-test-data-generator[cli]"`), the output is syntax-highlighted. Otherwise it falls back to plain JSON — either way, nothing is written to disk.
+
+---
+
+## Step 4 — Use it inside Python or pytest
 
 You can also use the tool directly in your Python code without going to the terminal.
 
@@ -240,13 +323,16 @@ print(order)
 
 ```python
 from api_test_data_generator.generator import DataGenerator
-from api_test_data_generator.exporters import export_json, export_csv
+from api_test_data_generator.exporters import export_json, export_csv, export_ndjson
 
 gen = DataGenerator.from_file("user_schema.json", seed=42)
 users = gen.generate_bulk(1000)
 
 # Save as JSON
 export_json(users, "output/users.json")
+
+# Save as NDJSON (one record per line — great for log pipelines and streaming)
+export_ndjson(users, "output/users.ndjson")
 
 # Save as CSV
 export_csv(users, "output/users.csv")
@@ -256,6 +342,8 @@ export_csv(users, "output/users.csv")
 
 ## All CLI options explained
 
+### `api-gen generate`
+
 ```
 api-gen generate [OPTIONS]
 ```
@@ -264,62 +352,80 @@ api-gen generate [OPTIONS]
 |--------|-------------|-----------|---------|
 | `--schema PATH` | Path to your schema file (.json or .yaml) | Yes | — |
 | `--count INT` | How many records to generate | No | 1 |
-| `--output PATH` | Where to save the output file | Yes | — |
-| `--format TEXT` | File format: `json` or `csv` | No | `json` |
+| `--output PATH` | Output file path, or `-` to print to stdout | Yes | — |
+| `--format TEXT` | File format: `json`, `ndjson`, or `csv` | No | `json` |
 | `--seed INT` | A number to make output repeatable (same seed = same data every time) | No | Random |
 | `--no-validate` | Skip checking the output against the schema | No | Validates by default |
 | `--verbose` | Show detailed logs while generating | No | Off |
 
-### Examples
+### `api-gen preview`
 
-Generate 1 record (useful for a quick check):
-```bash
-# Linux / macOS
-api-gen generate --schema user_schema.json --output one_user.json
-
-# Windows PowerShell
-api-gen generate --schema user_schema.json --output one_user.json
+```
+api-gen preview [OPTIONS]
 ```
 
-Generate 10 000 records in CSV format:
+| Option | What it does | Required? | Default |
+|--------|-------------|-----------|---------|
+| `--schema PATH` | Path to your schema file (.json or .yaml) | Yes | — |
+| `--count INT` | How many records to preview (1–10) | No | 3 |
+| `--seed INT` | A number to make the preview repeatable | No | Random |
+| `--verbose` | Show detailed logs | No | Off |
+
+---
+
+## Output formats
+
+### JSON (default)
+
+Records are written as a JSON array — one file, all records.
+
 ```bash
-# Linux / macOS
-api-gen generate \
-  --schema user_schema.json \
-  --count 10000 \
-  --output users.csv \
-  --format csv
-
-# Windows PowerShell
-api-gen generate `
-  --schema user_schema.json `
-  --count 10000 `
-  --output users.csv `
-  --format csv
-
-# Windows Command Prompt
-api-gen generate --schema user_schema.json --count 10000 --output users.csv --format csv
+api-gen generate --schema user_schema.json --count 100 --output users.json
+# or explicitly:
+api-gen generate --schema user_schema.json --count 100 --output users.json --format json
 ```
 
-Generate the same data every time (useful for repeatable tests):
+### NDJSON (Newline-Delimited JSON)
+
+Each record is written as a separate JSON object on its own line. This format is widely used for log ingestion, streaming pipelines (Kafka, Logstash, Elasticsearch bulk API), and tools that process one record at a time.
+
 ```bash
-# Linux / macOS
-api-gen generate --schema user_schema.json --count 50 --output users.json --seed 42
-
-# Windows PowerShell
-api-gen generate --schema user_schema.json --count 50 --output users.json --seed 42
-
-# Windows Command Prompt
-api-gen generate --schema user_schema.json --count 50 --output users.json --seed 42
+api-gen generate --schema user_schema.json --count 100 --output users.ndjson --format ndjson
 ```
 
-Show verbose logs (useful for debugging):
-```bash
-# Linux / macOS
-api-gen generate --schema user_schema.json --output users.json --verbose
+Output looks like:
+```
+{"user_id": "550e8400-...", "name": "Sarah Johnson", "email": "sarah@example.com"}
+{"user_id": "6ba7b810-...", "name": "Michael Torres", "email": "m.torres@example.org"}
+```
 
-# Windows PowerShell / Command Prompt
-api-gen generate --schema user_schema.json --output users.json --verbose
+### CSV
+
+Records are written as a comma-separated table. Nested objects are flattened to dot-notation columns (e.g. `address.city`, `address.country`). Install `pandas` for optimal column alignment with optional fields:
+
+```bash
+pip install "api-test-data-generator[csv]"
+```
+
+```bash
+api-gen generate --schema user_schema.json --count 100 --output users.csv --format csv
+```
+
+**Note:** CSV does not support stdout output (`--output -`).
+
+### Stdout output
+
+Use `--output -` to print records directly to your terminal or pipe them to another tool. Supports `json` and `ndjson` formats.
+
+```bash
+# Print JSON to terminal
+api-gen generate --schema user_schema.json --count 5 --output - --format json
+
+# Pipe NDJSON into another tool
+api-gen generate --schema user_schema.json --count 1000 --output - --format ndjson | my-loader
+
+# Pretty-print with Python's json.tool
+api-gen generate --schema user_schema.json --count 3 --output - | python -m json.tool
 ```
 
 ---
@@ -447,7 +553,9 @@ The `"faker"` key lets you use any method from the [Faker library](https://faker
 ```
 → `"discovery"`
 
-> Tip: Browse all available faker providers at https://faker.readthedocs.io/en/master/providers.html
+> **Tip:** Browse all available faker providers at https://faker.readthedocs.io/en/master/providers.html
+>
+> **Note:** If a `"faker"` method name is misspelled or does not exist, the tool logs a warning and falls back to a plain random string rather than crashing your generation run.
 
 ---
 
@@ -561,14 +669,12 @@ Save as `order_schema.json`:
 
 Generate 200 orders:
 ```bash
-# Linux / macOS
 api-gen generate --schema order_schema.json --count 200 --output orders.json
+```
 
-# Windows PowerShell
-api-gen generate --schema order_schema.json --count 200 --output orders.json
-
-# Windows Command Prompt
-api-gen generate --schema order_schema.json --count 200 --output orders.json
+Or stream them as NDJSON into a pipeline:
+```bash
+api-gen generate --schema order_schema.json --count 200 --output - --format ndjson | my-importer
 ```
 
 ---
@@ -674,6 +780,13 @@ Save as `product_schema.json`:
 
 ## Common recipes
 
+### Preview your schema before generating a large dataset
+
+```bash
+api-gen preview --schema user_schema.json
+api-gen preview --schema user_schema.json --count 5 --seed 1
+```
+
 ### Generate a single record to check your schema is correct
 
 ```bash
@@ -687,28 +800,44 @@ api-gen generate --schema user_schema.json --count 1 --output test.json; Get-Con
 api-gen generate --schema user_schema.json --count 1 --output test.json && type test.json
 ```
 
+### Print records directly to the terminal (no file)
+
+```bash
+api-gen generate --schema user_schema.json --count 3 --output - --format json
+```
+
+### Pipe NDJSON records into another process
+
+```bash
+# Linux / macOS — pipe into any tool that reads one JSON object per line
+api-gen generate --schema user_schema.json --count 1000 --output - --format ndjson | ./my-loader.sh
+
+# Pretty-print with Python
+api-gen generate --schema user_schema.json --count 5 --output - | python -m json.tool
+```
+
 ### Generate data without validating (faster for large datasets)
 
 Validation checks that every generated record matches your schema. Skipping it is safe when you trust your schema and need speed.
 
 ```bash
-# Linux / macOS
 api-gen generate --schema user_schema.json --count 50000 --output big_dataset.json --no-validate
+```
 
-# Windows PowerShell
-api-gen generate --schema user_schema.json --count 50000 --output big_dataset.json --no-validate
+### Generate to NDJSON for Elasticsearch / Logstash bulk import
 
-# Windows Command Prompt
-api-gen generate --schema user_schema.json --count 50000 --output big_dataset.json --no-validate
+```bash
+api-gen generate \
+  --schema user_schema.json \
+  --count 10000 \
+  --output users.ndjson \
+  --format ndjson \
+  --seed 42
 ```
 
 ### Debug why a schema is not working
 
 ```bash
-# Linux / macOS
-api-gen generate --schema user_schema.json --count 1 --output debug.json --verbose
-
-# Windows PowerShell / Command Prompt
 api-gen generate --schema user_schema.json --count 1 --output debug.json --verbose
 ```
 
@@ -798,65 +927,13 @@ def test_order_processing():
 
 ---
 
-## Exporting to CSV
-
-CSV is useful when you want to load test data into Excel, a database, or a data pipeline.
-
-### From the terminal
-
-**Linux / macOS**
-```bash
-api-gen generate \
-  --schema user_schema.json \
-  --count 1000 \
-  --output users.csv \
-  --format csv \
-  --seed 42
-```
-
-**Windows (PowerShell)**
-```powershell
-api-gen generate `
-  --schema user_schema.json `
-  --count 1000 `
-  --output users.csv `
-  --format csv `
-  --seed 42
-```
-
-**Windows (Command Prompt)**
-```cmd
-api-gen generate --schema user_schema.json --count 1000 --output users.csv --format csv --seed 42
-```
-
-### From Python
-
-```python
-from api_test_data_generator.generator import DataGenerator
-from api_test_data_generator.exporters import export_csv
-
-gen = DataGenerator.from_file("user_schema.json", seed=42)
-users = gen.generate_bulk(1000)
-
-export_csv(users, "output/users.csv")
-print("Saved 1000 users to output/users.csv")
-```
-
-**Note on nested fields in CSV:** If your schema has nested objects (like an address inside a user), the CSV will flatten them using dot notation. For example, `address.city` and `address.country` will each become their own column.
-
----
-
 ## Reproducible data with seeds
 
 By default, every run generates different random data. If you need the **same data every time** — for example, to compare test results across runs or share data with a colleague — use the `--seed` option.
 
 ```bash
 # These two commands produce identical output
-# Linux / macOS
 api-gen generate --schema user_schema.json --count 10 --output users.json --seed 42
-api-gen generate --schema user_schema.json --count 10 --output users.json --seed 42
-
-# Windows PowerShell / Command Prompt
 api-gen generate --schema user_schema.json --count 10 --output users.json --seed 42
 ```
 
@@ -878,11 +955,6 @@ assert records1 == records2  # Always True
 Use a **different seed number** to get different (but still repeatable) data:
 
 ```bash
-# Linux / macOS
-api-gen generate --schema user_schema.json --count 10 --output dataset_a.json --seed 1
-api-gen generate --schema user_schema.json --count 10 --output dataset_b.json --seed 2
-
-# Windows PowerShell / Command Prompt
 api-gen generate --schema user_schema.json --count 10 --output dataset_a.json --seed 1
 api-gen generate --schema user_schema.json --count 10 --output dataset_b.json --seed 2
 ```
@@ -899,6 +971,7 @@ api-gen generate --schema user_schema.json --count 10 --output dataset_b.json --
 | `Record failed schema validation` | A generated record does not match your schema | Check your schema for conflicting rules (e.g. minimum > maximum) |
 | `Cannot export an empty record list to CSV` | You tried to export 0 records | Make sure `--count` is at least 1 |
 | `No generator registered for type '...'` | You used an unsupported field type | See the [field types reference](#schema-field-types--full-reference) for valid options |
+| `CSV format does not support stdout output` | You used `--output -` with `--format csv` | Use a file path for CSV, or switch to `json` or `ndjson` |
 
 ---
 
@@ -990,17 +1063,18 @@ api_test_data_generator/
 │   │   └── exceptions.py        ← custom error classes
 │   │
 │   ├── exporters/
-│   │   ├── json_exporter.py     ← saves records as JSON
+│   │   ├── json_exporter.py     ← saves records as a JSON array
+│   │   ├── ndjson_exporter.py   ← saves records as NDJSON (one object per line)
 │   │   └── csv_exporter.py      ← saves records as CSV (flattens nested data)
 │   │
 │   ├── cli/
-│   │   └── main.py              ← the "api-gen generate" command
+│   │   └── main.py              ← "api-gen generate" and "api-gen preview" commands
 │   │
 │   └── utils/
 │       ├── seed_manager.py      ← manages the random seed globally
 │       └── randomizer.py        ← helper functions for random data
 │
-├── tests/                       ← 139 tests, 96% coverage
+├── tests/                       ← 169 tests, ~95% coverage
 ├── examples/
 │   ├── user_schema.json         ← example user schema
 │   └── order_schema.yaml        ← example order schema
@@ -1025,6 +1099,9 @@ api_test_data_generator/
 
 ## FAQ
 
+**Q: Why not just use Faker directly?**
+Faker is great for generating individual values. This tool wraps Faker (and other generators) to produce structured multi-field records that match an API contract, handle optional fields automatically, validate output against your schema, and export to JSON/NDJSON/CSV — all with a single command. See the [full comparison](#why-not-just-use-faker-directly) above.
+
 **Q: How is this different from just writing test data by hand?**
 Writing data by hand is fine for 5–10 records. This tool is useful when you need hundreds or thousands of records, need them to be realistic (real-looking names, emails, UUIDs), or need the same data to be reproducible across test runs.
 
@@ -1035,7 +1112,13 @@ Not deeply. The examples in this README cover the most common cases. You can cop
 Yes, as long as your schema does not change and you use the same version of the tool. If you update your schema, the same seed may produce different records.
 
 **Q: My schema has a `"faker"` key but I am getting generic strings instead of names. Why?**
-The faker method name might be misspelled. Check the full list of available methods at https://faker.readthedocs.io/en/master/providers.html. The tool falls back to a plain string silently if the method is not found.
+The faker method name is probably misspelled. Check the full list of available methods at https://faker.readthedocs.io/en/master/providers.html. When a method name is not recognised, the tool logs a warning message and falls back to a plain string so your generation run is not interrupted.
+
+**Q: What is the difference between JSON and NDJSON output?**
+JSON produces a single array file (`[{...}, {...}]`) — good for loading the whole dataset at once. NDJSON writes one JSON object per line — good for streaming, log ingestion tools (Elasticsearch, Logstash, Kafka consumers), and processing large datasets without loading everything into memory.
+
+**Q: Can I stream output to another process without writing a file?**
+Yes. Use `--output -` with `--format json` or `--format ndjson`. The records are printed to stdout and can be piped to any tool. CSV does not support stdout output.
 
 **Q: Can I use this with any testing framework?**
 Yes. It returns plain Python dicts and lists, so it works with pytest, unittest, or any other framework. You can also use it to pre-generate data files and load them separately.

@@ -104,9 +104,16 @@ class EnumGenerator(BaseFieldGenerator):
 class ArrayGenerator(BaseFieldGenerator):
     def generate(self, config: dict[str, Any]) -> Any:
         from api_test_data_generator.generator.field_types import FieldGeneratorRegistry
-        min_items = config.get("minItems", 1)
-        max_items = config.get("maxItems", 5)
-        count = random.randint(int(min_items), int(max_items))
+        min_items = int(config.get("minItems", 1))
+        max_items = int(config.get("maxItems", 5))
+        if min_items > max_items:
+            logger.warning(
+                "ArrayGenerator: minItems (%d) > maxItems (%d); clamping maxItems to minItems.",
+                min_items,
+                max_items,
+            )
+            max_items = min_items
+        count = random.randint(min_items, max_items)
         items_schema = config.get("items", {"type": "string"})
         registry = FieldGeneratorRegistry()
         return [registry.generate_field(items_schema) for _ in range(count)]
@@ -140,8 +147,10 @@ class FakerFieldGenerator(BaseFieldGenerator):
         faker = get_faker()
         method = getattr(faker, faker_method, None)
         if method is None:
-            logger.debug(
-                f"Faker method '{faker_method}' not found; falling back to type-based generation."
+            logger.warning(
+                "Unknown Faker method %r — falling back to random string. "
+                "Check the 'faker' key in your schema.",
+                faker_method,
             )
             return StringGenerator().generate(config)
         return str(method())

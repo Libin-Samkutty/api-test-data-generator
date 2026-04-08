@@ -1,4 +1,5 @@
 """Unit tests for field type generators."""
+import logging
 import pytest
 import re
 from api_test_data_generator.generator.field_types import (
@@ -165,6 +166,32 @@ class TestArrayGenerator:
         result = ArrayGenerator().generate(config)
         assert all(isinstance(x, bool) for x in result)
 
+    def test_inverted_min_max_does_not_raise(self):
+        """minItems > maxItems must not crash — clamps to minItems length."""
+        result = ArrayGenerator().generate(
+            {"minItems": 5, "maxItems": 2, "items": {"type": "string"}}
+        )
+        assert isinstance(result, list)
+        assert len(result) == 5
+
+    def test_inverted_min_max_logs_warning(self, caplog):
+        """minItems > maxItems must emit a WARNING."""
+        with caplog.at_level(
+            logging.WARNING, logger="api_test_data_generator.generator.field_types"
+        ):
+            ArrayGenerator().generate({"minItems": 5, "maxItems": 2, "items": {"type": "string"}})
+        assert "minItems" in caplog.text
+        assert "maxItems" in caplog.text
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+    def test_equal_min_max_returns_exact_count(self):
+        """minItems == maxItems is a valid boundary case."""
+        result = ArrayGenerator().generate(
+            {"minItems": 3, "maxItems": 3, "items": {"type": "integer"}}
+        )
+        assert isinstance(result, list)
+        assert len(result) == 3
+
 
 class TestObjectGenerator:
     def test_returns_dict(self):
@@ -213,6 +240,17 @@ class TestFakerFieldGenerator:
     def test_unknown_method_falls_back(self):
         result = FakerFieldGenerator().generate({"faker": "nonexistent_method_xyz"})
         assert isinstance(result, str)
+
+    def test_unknown_method_logs_warning(self, caplog):
+        """Invalid faker key must emit a WARNING visible at default log level."""
+        with caplog.at_level(
+            logging.WARNING, logger="api_test_data_generator.generator.field_types"
+        ):
+            result = FakerFieldGenerator().generate({"faker": "nonexistent_xyz_method"})
+        assert isinstance(result, str)
+        assert "nonexistent_xyz_method" in caplog.text
+        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert warning_records, "Expected at least one WARNING log record"
 
 
 class TestFieldGeneratorRegistry:

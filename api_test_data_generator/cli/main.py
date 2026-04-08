@@ -1,6 +1,7 @@
 """CLI entry point for api-test-data-generator."""
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Optional
@@ -10,6 +11,7 @@ import typer
 from api_test_data_generator.generator.core import DataGenerator
 from api_test_data_generator.exporters.json_exporter import export_json
 from api_test_data_generator.exporters.csv_exporter import export_csv
+from api_test_data_generator.exporters.ndjson_exporter import export_ndjson
 from api_test_data_generator.generator.exceptions import (
     SchemaLoadError,
     ValidationError,
@@ -22,7 +24,7 @@ app = typer.Typer(
     add_completion=False,
 )
 
-_FORMAT_CHOICES = ["json", "csv"]
+_FORMAT_CHOICES = ["json", "csv", "ndjson"]
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -52,17 +54,17 @@ def generate(
         min=1,
         help="Number of records to generate.",
     ),
-    output: Path = typer.Option(
+    output: str = typer.Option(
         ...,
         "--output",
         "-o",
-        help="Output file path.",
+        help="Output file path, or '-' to write to stdout.",
     ),
     fmt: str = typer.Option(
         "json",
         "--format",
         "-f",
-        help="Output format: json or csv.",
+        help="Output format: json, csv, or ndjson.",
     ),
     seed: Optional[int] = typer.Option(
         None,
@@ -88,6 +90,17 @@ def generate(
         typer.echo(f"[ERROR] Unsupported format '{fmt}'. Choose from: {_FORMAT_CHOICES}", err=True)
         raise typer.Exit(code=1)
 
+    write_to_stdout = output == "-"
+    if not write_to_stdout:
+        output_path = Path(output)
+
+    if write_to_stdout and fmt == "csv":
+        typer.echo(
+            "[ERROR] CSV format does not support stdout output. Use --output <file> for CSV.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
     try:
         generator = DataGenerator.from_file(schema, seed=seed, validate=validate)
 
@@ -96,12 +109,20 @@ def generate(
         else:
             records = generator.generate_bulk(count)
 
-        if fmt == "csv":
-            export_csv(records, output)
+        if write_to_stdout:
+            if fmt == "ndjson":
+                for record in records:
+                    typer.echo(json.dumps(record, default=str, ensure_ascii=False))
+            else:
+                typer.echo(json.dumps(records, indent=2, default=str, ensure_ascii=False))
         else:
-            export_json(records, output)
-
-        _print_success(count, output, fmt)
+            if fmt == "csv":
+                export_csv(records, output_path)
+            elif fmt == "ndjson":
+                export_ndjson(records, output_path)
+            else:
+                export_json(records, output_path)
+            _print_success(count, output_path, fmt)
 
     except SchemaLoadError as exc:
         typer.echo(f"[ERROR] Schema error: {exc}", err=True)
@@ -112,6 +133,70 @@ def generate(
     except ExportError as exc:
         typer.echo(f"[ERROR] Export error: {exc}", err=True)
         raise typer.Exit(code=4)
+    except Exception as exc:
+        typer.echo(f"[ERROR] Unexpected error: {exc}", err=True)
+        raise typer.Exit(code=99)
+
+
+@app.command("preview")
+def preview(
+    schema: Path = typer.Option(
+        ...,
+        "--schema",
+        "-s",
+        help="Path to JSON or YAML schema file.",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    count: int = typer.Option(
+        3,
+        "--count",
+        "-n",
+        min=1,
+        max=10,
+        help="Number of records to preview (1-10).",
+    ),
+    seed: Optional[int] = typer.Option(
+        None,
+        "--seed",
+        help="Random seed for deterministic preview.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose/debug logging.",
+    ),
+) -> None:
+    """Preview generated records in the terminal without saving a file."""
+    _setup_logging(verbose)
+
+    try:
+        generator = DataGenerator.from_file(schema, seed=seed, validate=False)
+        records = generator.generate_bulk(count)
+
+        try:
+            from rich.console import Console
+            from rich import print_json as rich_print_json
+
+            console = Console()
+            console.print(
+                f"[bold cyan]Preview[/bold cyan] — {count} record(s) "
+                f"from [dim]{schema}[/dim]\n"
+            )
+            for i, record in enumerate(records, 1):
+                console.print(f"[bold]Record {i}[/bold]")
+                rich_print_json(json.dumps(record, default=str, ensure_ascii=False))
+                console.print()
+        except ImportError:
+            typer.echo(f"# Preview — {count} record(s)\n")
+            typer.echo(json.dumps(records, indent=2, default=str, ensure_ascii=False))
+
+    except SchemaLoadError as exc:
+        typer.echo(f"[ERROR] Schema error: {exc}", err=True)
+        raise typer.Exit(code=2)
     except Exception as exc:
         typer.echo(f"[ERROR] Unexpected error: {exc}", err=True)
         raise typer.Exit(code=99)

@@ -11,6 +11,7 @@ You describe what your data should look like (using a simple schema file), and t
 ## Table of Contents
 
 - [What does it do?](#what-does-it-do)
+- [Why not just use Faker directly?](#why-not-just-use-faker-directly)
 - [How it works — the big picture](#how-it-works--the-big-picture)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -40,6 +41,63 @@ Imagine you are building a user registration API and want to test it with 1000 d
 1. Describe what a user looks like (name, email, age, etc.) in a schema file
 2. Run one command
 3. Get a ready-to-use JSON, NDJSON, or CSV file with 1000 realistic users
+
+---
+
+## Why not just use Faker directly?
+
+[Faker](https://faker.readthedocs.io) is a great library for generating individual fake values. But when testing an API, you need more than random values — you need structured records that match your API contract, can be exported to a file, and behave consistently across test runs. Doing that with raw Faker requires writing glue code every time.
+
+Here is what that looks like in practice:
+
+**With raw Faker** — you write this for every project:
+```python
+from faker import Faker
+import json, csv, random
+
+fake = Faker()
+random.seed(42)
+Faker.seed(42)  # easy to forget; causes non-reproducible tests if missed
+
+users = []
+for _ in range(1000):
+    include_age = random.random() < 0.8  # optional fields need manual handling
+    user = {
+        "user_id": str(fake.uuid4()),
+        "email": fake.email(),
+        "name": fake.name() if include_age else None,
+        "age": random.randint(18, 60) if include_age else None,
+    }
+    users.append(user)
+
+# Flatten nested objects for CSV yourself
+# Collect all fieldnames across all records yourself (or columns go missing)
+# Write the export boilerplate yourself
+with open("users.csv", "w", newline="") as f:
+    writer = csv.DictWriter(f, fieldnames=users[0].keys())  # bug: misses optional fields
+    writer.writeheader()
+    writer.writerows(users)
+```
+
+**With this tool** — define the schema once, run one command:
+```bash
+api-gen generate --schema user_schema.json --count 1000 --output users.csv --format csv --seed 42
+```
+
+The specific things this tool handles for you:
+
+| Problem | Raw Faker | This tool |
+|---|---|---|
+| Structured multi-field records | Write a loop for every project | Defined once in a schema file |
+| Optional fields | `if random.random() < 0.8` everywhere | Automatic — fields not in `required` appear 80% of the time |
+| Reproducible output | Must seed both `random` and `Faker` separately | `--seed` handles both correctly |
+| Schema validation | Write jsonschema calls yourself | Built in — validates every record by default |
+| CSV with nested objects | Flatten and collect all fieldnames manually | Automatic dot-notation flattening |
+| NDJSON export | Write the loop yourself | `--format ndjson` |
+| No-code usage | Must write Python | `api-gen generate` from the terminal |
+| Quick schema iteration | Generate, print, adjust, repeat in code | `api-gen preview --schema ...` |
+
+If you are already comfortable with Faker and only need one or two fields, use Faker directly. If you need full records that match an API contract, reproducible datasets, or file export, this tool saves the boilerplate.
 
 ---
 
@@ -1040,6 +1098,9 @@ api_test_data_generator/
 ---
 
 ## FAQ
+
+**Q: Why not just use Faker directly?**
+Faker is great for generating individual values. This tool wraps Faker (and other generators) to produce structured multi-field records that match an API contract, handle optional fields automatically, validate output against your schema, and export to JSON/NDJSON/CSV — all with a single command. See the [full comparison](#why-not-just-use-faker-directly) above.
 
 **Q: How is this different from just writing test data by hand?**
 Writing data by hand is fine for 5–10 records. This tool is useful when you need hundreds or thousands of records, need them to be realistic (real-looking names, emails, UUIDs), or need the same data to be reproducible across test runs.
